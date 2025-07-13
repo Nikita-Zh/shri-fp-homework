@@ -14,38 +14,67 @@
  * Иногда промисы от API будут приходить в состояние rejected, (прямо как и API в реальной жизни)
  * Ответ будет приходить в поле {result}
  */
- import Api from '../tools/api';
+import Api from "../tools/api";
+import * as R from "ramda";
 
- const api = new Api();
+const api = new Api();
 
- /**
-  * Я – пример, удали меня
-  */
- const wait = time => new Promise(resolve => {
-     setTimeout(resolve, time);
- })
+const getBinary = R.curry(async (number) => {
+  const response = await api.get("https://api.tech/numbers/base", {
+    from: 10,
+    to: 2,
+    number,
+  });
+  return response.result;
+});
 
- const processSequence = ({value, writeLog, handleSuccess, handleError}) => {
-     /**
-      * Я – пример, удали меня
-      */
-     writeLog(value);
+const getAnimal = R.curry(async (id) => {
+  const response = await api.get(`https://animals.tech/${id}`, {});
+  return response.result;
+});
 
-     api.get('https://api.tech/numbers/base', {from: 2, to: 10, number: '01011010101'}).then(({result}) => {
-         writeLog(result);
-     });
+const MIN_LENGTH = 3;
+const MAX_LENGTH = 9;
 
-     wait(2500).then(() => {
-         writeLog('SecondLog')
+const validateString = R.pipe(
+  R.both(
+    R.pipe(R.length, R.both(R.gte(R.__, MIN_LENGTH), R.lte(R.__, MAX_LENGTH))),
+    R.allPass([
+      R.test(/^[0-9.]+$/),
+      R.pipe(R.match(/\./g), R.defaultTo([]), R.length, R.gt(2)),
+      R.pipe(parseFloat, R.both(R.complement(isNaN), R.lt(0))),
+    ])
+  )
+);
 
-         return wait(1500);
-     }).then(() => {
-         writeLog('ThirdLog');
+const processSequence = async ({
+  value,
+  writeLog,
+  handleSuccess,
+  handleError,
+}) => {
+  if (!validateString(value)) {
+    handleError("ValidationError");
+    return;
+  }
 
-         return wait(400);
-     }).then(() => {
-         handleSuccess('Done');
-     });
- }
+  const tapLog = R.tap(writeLog);
+  Promise.resolve(value)
+    .then(tapLog)
+    .then(R.pipe(parseFloat, Math.round))
+    .then(tapLog)
+    .then(getBinary)
+    .then(tapLog)
+    .then(R.prop("length"))
+    .then(tapLog)
+    .then((x) => x * x)
+    .then(tapLog)
+    .then(R.modulo(R.__, 3))
+    .then(tapLog)
+    .then(getAnimal)
+    .then(handleSuccess)
+    .catch((error) => handleError(error.toString()));
+};
 
 export default processSequence;
+
